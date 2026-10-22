@@ -30,15 +30,14 @@ jobs:
             const passed =
               availabilityPassed && performancePassed && !error;
 
-            const statusText = statusCode === null
-              ? 'Request failed'
-              : String(statusCode);
+            const statusText =
+              statusCode === null ? 'Request failed' : String(statusCode);
 
             const result = passed ? 'PASSED' : 'FAILED';
 
             console.log('Status Code:', statusText);
             console.log('Response Time:', responseTime + ' ms');
-            console.log('API Monitor', result);
+            console.log('API Monitor:', result);
 
             if (error) {
               console.error('Error:', error);
@@ -48,15 +47,13 @@ jobs:
               '# ReqRes API Monitor',
               '',
               '| Kiểm tra | Kết quả | Trạng thái |',
-              '|---|---:|---|',
+              '|---|---|---|',
               `| HTTP Status Code | ${statusText} | ${availabilityPassed ? 'PASS' : 'FAIL'} |`,
               `| Response Time | ${responseTime} ms | ${performancePassed ? 'PASS' : 'FAIL'} |`,
               `| API Monitor | ${result} | ${passed ? 'PASS' : 'FAIL'} |`,
               '',
-              `Endpoint: GET https://reqres.in/api/users?page=1`,
-              '',
-              `Ngưỡng thời gian phản hồi: dưới 800 ms`,
-              '',
+              'Endpoint: GET https://reqres.in/api/users?page=1',
+              'Yêu cầu: HTTP 200 và Response Time dưới 800 ms.',
               error ? `Lỗi: ${error}` : ''
             ].join('\n');
 
@@ -71,9 +68,19 @@ jobs:
             <meta charset="UTF-8">
             <title>ReqRes API Monitor Report</title>
             <style>
-              body { font-family: Arial, sans-serif; margin: 36px; }
-              table { border-collapse: collapse; width: 100%; }
-              th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+              body {
+                font-family: Arial, sans-serif;
+                margin: 36px;
+              }
+              table {
+                border-collapse: collapse;
+                width: 100%;
+              }
+              th, td {
+                border: 1px solid #ddd;
+                padding: 12px;
+                text-align: left;
+              }
               th { background: #f2f2f2; }
               .pass { color: green; font-weight: bold; }
               .fail { color: red; font-weight: bold; }
@@ -83,25 +90,35 @@ jobs:
             <h1>ReqRes API Monitor Report</h1>
             <p>Endpoint: GET https://reqres.in/api/users?page=1</p>
             <table>
-              <tr><th>Kiểm tra</th><th>Kết quả</th><th>Trạng thái</th></tr>
+              <tr>
+                <th>Kiểm tra</th>
+                <th>Kết quả</th>
+                <th>Trạng thái</th>
+              </tr>
               <tr>
                 <td>HTTP Status Code</td>
                 <td>${statusText}</td>
-                <td class="${availabilityPassed ? 'pass' : 'fail'}">${availabilityPassed ? 'PASS' : 'FAIL'}</td>
+                <td class="${availabilityPassed ? 'pass' : 'fail'}">
+                  ${availabilityPassed ? 'PASS' : 'FAIL'}
+                </td>
               </tr>
               <tr>
                 <td>Response Time</td>
                 <td>${responseTime} ms</td>
-                <td class="${performancePassed ? 'pass' : 'fail'}">${performancePassed ? 'PASS' : 'FAIL'}</td>
+                <td class="${performancePassed ? 'pass' : 'fail'}">
+                  ${performancePassed ? 'PASS' : 'FAIL'}
+                </td>
               </tr>
               <tr>
                 <td>API Monitor</td>
                 <td>${result}</td>
-                <td class="${passed ? 'pass' : 'fail'}">${passed ? 'PASS' : 'FAIL'}</td>
+                <td class="${passed ? 'pass' : 'fail'}">
+                  ${passed ? 'PASS' : 'FAIL'}
+                </td>
               </tr>
             </table>
             <p>Yêu cầu: HTTP 200 và Response Time dưới 800 ms.</p>
-            ${error ? `<p>Error: ${error}</p>` : ''}
+            ${error ? `<p>Lỗi: ${error}</p>` : ''}
           </body>
           </html>`;
 
@@ -112,37 +129,37 @@ jobs:
             }
           }
 
-          if (!process.env.REQRES_API_KEY) {
-            finish(null, Date.now() - start, 'Missing REQRES_API_KEY secret');
-          } else {
-            const options = {
-              hostname: 'reqres.in',
-              path: '/api/users?page=1',
-              method: 'GET',
-              headers: {
-                'x-api-key': process.env.REQRES_API_KEY
-              }
-            };
+          const options = {
+            hostname: 'reqres.in',
+            path: '/api/users?page=1',
+            method: 'GET',
+            headers: {}
+          };
 
-            const req = https.request(options, (res) => {
-              res.resume();
-
-              res.on('end', () => {
-                const elapsed = Date.now() - start;
-                finish(res.statusCode, elapsed);
-              });
-            });
-
-            req.setTimeout(15000, () => {
-              req.destroy(new Error('Request timed out'));
-            });
-
-            req.on('error', (err) => {
-              finish(null, Date.now() - start, err.message);
-            });
-
-            req.end();
+          // Chỉ gửi API key khi GitHub cung cấp Secret.
+          // Nếu chưa có Secret, vẫn thử gọi API để lấy lỗi thực tế.
+          if (process.env.REQRES_API_KEY) {
+            options.headers['x-api-key'] =
+              process.env.REQRES_API_KEY;
           }
+
+          const req = https.request(options, (res) => {
+            res.resume();
+
+            res.on('end', () => {
+              finish(res.statusCode, Date.now() - start);
+            });
+          });
+
+          req.setTimeout(15000, () => {
+            req.destroy(new Error('Request timed out'));
+          });
+
+          req.on('error', (err) => {
+            finish(null, Date.now() - start, err.message);
+          });
+
+          req.end();
           NODE
 
       - name: Upload Monitor HTML Report
