@@ -19,24 +19,26 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install Newman and HTML reporter
+      - name: Install Newman
         run: npm install -g newman newman-reporter-htmlextra
 
       - name: Run API tests
         env:
           REQRES_API_KEY: ${{ secrets.REQRES_API_KEY }}
         run: |
-          newman run ReqRes_Collection.json \
-            -e ReqRes_Environment.json \
-            -d users.csv \
+          test -n "$REQRES_API_KEY" || (echo "Missing REQRES_API_KEY secret" && exit 1)
+
+          newman run Lab05_ReqRes/ReqRes_Collection.json \
+            -e Lab05_ReqRes/ReqRes_Environment.json \
+            -d Lab05_ReqRes/users.csv \
             --env-var "api-key=$REQRES_API_KEY" \
             --reporters cli,htmlextra \
-            --reporter-htmlextra-export report.html
+            --reporter-htmlextra-export Lab05_ReqRes/report.html
 
       - name: Upload HTML report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ReqRes-Test-Report
-          path: report.html
+          path: Lab05_ReqRes/report.html
           if-no-files-found: warn
