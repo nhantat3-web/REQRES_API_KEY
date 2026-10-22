@@ -10,50 +10,145 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check API
+      - name: Check API Availability and Performance
         env:
           REQRES_API_KEY: ${{ secrets.REQRES_API_KEY }}
         run: |
           node <<'NODE'
           const https = require('https');
-
-          const options = {
-            hostname: 'reqres.in',
-            path: '/api/users?page=1',
-            method: 'GET',
-            headers: {
-              'x-api-key': process.env.REQRES_API_KEY || ''
-            }
-          };
+          const fs = require('fs');
 
           const start = Date.now();
+          let completed = false;
 
-          const req = https.request(options, (res) => {
-            const elapsed = Date.now() - start;
-            let body = '';
+          function finish(statusCode, responseTime, error = '') {
+            if (completed) return;
+            completed = true;
 
-            res.on('data', chunk => body += chunk);
+            const availabilityPassed = statusCode === 200;
+            const performancePassed = responseTime < 800;
+            const passed =
+              availabilityPassed && performancePassed && !error;
 
-            res.on('end', () => {
-              console.log('Status Code:', res.statusCode);
-              console.log('Response Time:', elapsed + ' ms');
+            const statusText = statusCode === null
+              ? 'Request failed'
+              : String(statusCode);
 
-              if (res.statusCode !== 200) {
-                console.error('API check failed');
-                process.exitCode = 1;
-              } else if (elapsed >= 800) {
-                console.error('Response time exceeds 800 ms');
-                process.exitCode = 1;
-              } else {
-                console.log('API Monitor PASSED');
+            const result = passed ? 'PASSED' : 'FAILED';
+
+            console.log('Status Code:', statusText);
+            console.log('Response Time:', responseTime + ' ms');
+            console.log('API Monitor', result);
+
+            if (error) {
+              console.error('Error:', error);
+            }
+
+            const summary = [
+              '# ReqRes API Monitor',
+              '',
+              '| Kiểm tra | Kết quả | Trạng thái |',
+              '|---|---:|---|',
+              `| HTTP Status Code | ${statusText} | ${availabilityPassed ? 'PASS' : 'FAIL'} |`,
+              `| Response Time | ${responseTime} ms | ${performancePassed ? 'PASS' : 'FAIL'} |`,
+              `| API Monitor | ${result} | ${passed ? 'PASS' : 'FAIL'} |`,
+              '',
+              `Endpoint: GET https://reqres.in/api/users?page=1`,
+              '',
+              `Ngưỡng thời gian phản hồi: dưới 800 ms`,
+              '',
+              error ? `Lỗi: ${error}` : ''
+            ].join('\n');
+
+            fs.appendFileSync(
+              process.env.GITHUB_STEP_SUMMARY,
+              summary + '\n'
+            );
+
+            const html = `<!DOCTYPE html>
+          <html lang="vi">
+          <head>
+            <meta charset="UTF-8">
+            <title>ReqRes API Monitor Report</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 36px; }
+              table { border-collapse: collapse; width: 100%; }
+              th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+              th { background: #f2f2f2; }
+              .pass { color: green; font-weight: bold; }
+              .fail { color: red; font-weight: bold; }
+            </style>
+          </head>
+          <body>
+            <h1>ReqRes API Monitor Report</h1>
+            <p>Endpoint: GET https://reqres.in/api/users?page=1</p>
+            <table>
+              <tr><th>Kiểm tra</th><th>Kết quả</th><th>Trạng thái</th></tr>
+              <tr>
+                <td>HTTP Status Code</td>
+                <td>${statusText}</td>
+                <td class="${availabilityPassed ? 'pass' : 'fail'}">${availabilityPassed ? 'PASS' : 'FAIL'}</td>
+              </tr>
+              <tr>
+                <td>Response Time</td>
+                <td>${responseTime} ms</td>
+                <td class="${performancePassed ? 'pass' : 'fail'}">${performancePassed ? 'PASS' : 'FAIL'}</td>
+              </tr>
+              <tr>
+                <td>API Monitor</td>
+                <td>${result}</td>
+                <td class="${passed ? 'pass' : 'fail'}">${passed ? 'PASS' : 'FAIL'}</td>
+              </tr>
+            </table>
+            <p>Yêu cầu: HTTP 200 và Response Time dưới 800 ms.</p>
+            ${error ? `<p>Error: ${error}</p>` : ''}
+          </body>
+          </html>`;
+
+            fs.writeFileSync('monitor-report.html', html);
+
+            if (!passed) {
+              process.exitCode = 1;
+            }
+          }
+
+          if (!process.env.REQRES_API_KEY) {
+            finish(null, Date.now() - start, 'Missing REQRES_API_KEY secret');
+          } else {
+            const options = {
+              hostname: 'reqres.in',
+              path: '/api/users?page=1',
+              method: 'GET',
+              headers: {
+                'x-api-key': process.env.REQRES_API_KEY
               }
+            };
+
+            const req = https.request(options, (res) => {
+              res.resume();
+
+              res.on('end', () => {
+                const elapsed = Date.now() - start;
+                finish(res.statusCode, elapsed);
+              });
             });
-          });
 
-          req.on('error', (err) => {
-            console.error(err.message);
-            process.exitCode = 1;
-          });
+            req.setTimeout(15000, () => {
+              req.destroy(new Error('Request timed out'));
+            });
 
-          req.end();
+            req.on('error', (err) => {
+              finish(null, Date.now() - start, err.message);
+            });
+
+            req.end();
+          }
           NODE
+
+      - name: Upload Monitor HTML Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReqRes-Monitor-Report
+          path: monitor-report.html
+          if-no-files-found: warn
