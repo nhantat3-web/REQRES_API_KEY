@@ -1,0 +1,59 @@
+name: ReqRes API Monitor
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check API
+        env:
+          REQRES_API_KEY: ${{ secrets.REQRES_API_KEY }}
+        run: |
+          node <<'NODE'
+          const https = require('https');
+
+          const options = {
+            hostname: 'reqres.in',
+            path: '/api/users?page=1',
+            method: 'GET',
+            headers: {
+              'x-api-key': process.env.REQRES_API_KEY || ''
+            }
+          };
+
+          const start = Date.now();
+
+          const req = https.request(options, (res) => {
+            const elapsed = Date.now() - start;
+            let body = '';
+
+            res.on('data', chunk => body += chunk);
+
+            res.on('end', () => {
+              console.log('Status Code:', res.statusCode);
+              console.log('Response Time:', elapsed + ' ms');
+
+              if (res.statusCode !== 200) {
+                console.error('API check failed');
+                process.exitCode = 1;
+              } else if (elapsed >= 800) {
+                console.error('Response time exceeds 800 ms');
+                process.exitCode = 1;
+              } else {
+                console.log('API Monitor PASSED');
+              }
+            });
+          });
+
+          req.on('error', (err) => {
+            console.error(err.message);
+            process.exitCode = 1;
+          });
+
+          req.end();
+          NODE
